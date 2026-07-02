@@ -111,6 +111,66 @@ export const loginUser = async (req: Request, res: Response) => {
   }
 };
 
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const {email} = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const apiKey = process.env.WEB_API_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({
+        success: false,
+        message: "Firebase API key is missing",
+      });
+    }
+
+    const response = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          requestType: "PASSWORD_RESET",
+          email,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(400).json({
+        success: false,
+        message: data.error?.message || "Failed to send password reset email",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset email sent successfully",
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ?
+        error.message :
+        "Failed to send password reset email";
+
+    return res.status(500).json({
+      success: false,
+      message,
+    });
+  }
+};
+
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
     const uid = req.user?.uid;
