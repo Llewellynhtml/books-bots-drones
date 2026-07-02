@@ -1,0 +1,17 @@
+node_modules
+functions/dist
+functions/lib
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+firestore-debug.*.log
+emulator-test.log
+emulator-test.err.log
+*_inspect
+_zip-inspect*
+_zip-source-inspect*
+# Keep environment variables out of version control
+.env
+functions/.env
+
+/src/generated/prisma
