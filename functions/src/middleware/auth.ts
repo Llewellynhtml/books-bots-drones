@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from "express";
-import { auth } from "../config/firebase";
+import {Request, Response, NextFunction} from "express";
+import {auth, db} from "../config/firebase";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -25,10 +25,13 @@ export const protect = async (
     }
 
     const decodedToken = await auth.verifyIdToken(token);
+    const userDoc = await db.collection("users").doc(decodedToken.uid).get();
+    const userData = userDoc.data();
 
     req.user = {
       uid: decodedToken.uid,
       email: decodedToken.email,
+      role: userData?.role || "customer",
     };
 
     return next();
@@ -38,4 +41,19 @@ export const protect = async (
       message: "Invalid or expired token",
     });
   }
+};
+
+export const requireAdmin = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Admin access required",
+    });
+  }
+
+  return next();
 };
