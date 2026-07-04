@@ -1,9 +1,11 @@
 import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth.routes";
+import cartRoutes from "./routes/cart.routes";
 import categoryRoutes from "./routes/category.routes";
 import productRoutes from "./routes/product.routes";
 import storageRoutes from "./routes/storage.routes";
+import wishlistRoutes from "./routes/wishlist.routes";
 
 const app = express();
 
@@ -18,8 +20,10 @@ app.get("/", (req, res) => {
 });
 
 app.use("/auth", authRoutes);
+app.use("/cart", cartRoutes);
 app.use("/categories", categoryRoutes);
 app.use("/products", productRoutes);
 app.use("/storage", storageRoutes);
+app.use("/wishlist", wishlistRoutes);
 
 export default app;
