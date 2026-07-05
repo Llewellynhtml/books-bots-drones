@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth.routes";
+import blogRoutes from "./routes/blog.routes";
 import cartRoutes from "./routes/cart.routes";
 import categoryRoutes from "./routes/category.routes";
 import contactRoutes from "./routes/contact.routes";
@@ -22,6 +23,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/auth", authRoutes);
+app.use("/blog", blogRoutes);
 app.use("/cart", cartRoutes);
 app.use("/categories", categoryRoutes);
 app.use("/contact", contactRoutes);
