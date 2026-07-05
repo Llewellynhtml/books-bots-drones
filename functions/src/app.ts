@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import adminRoutes from "./routes/admin.routes";
 import authRoutes from "./routes/auth.routes";
 import blogRoutes from "./routes/blog.routes";
 import cartRoutes from "./routes/cart.routes";
@@ -23,6 +24,7 @@ app.get("/", (req, res) => {
   });
 });
 
+app.use("/admin", adminRoutes);
 app.use("/auth", authRoutes);
 app.use("/blog", blogRoutes);
 app.use("/cart", cartRoutes);
