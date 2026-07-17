@@ -1,6 +1,7 @@
-import {db} from "../config/firebase";
+﻿import {db} from "../config/firebase";
 
 const ordersCollection = db.collection("orders");
+const paymentsCollection = db.collection("payments");
 const paystackBaseUrl = "https://api.paystack.co";
 
 interface InitializePaymentInput {
@@ -189,8 +190,28 @@ export const initializePaystackPaymentRecord = async (
     }
   );
   const now = new Date().toISOString();
+  const paymentDoc = paymentsCollection.doc(paystackResponse.data.reference);
+
+  const payment = {
+    id: paymentDoc.id,
+    orderId,
+    uid,
+    email: order.email || "",
+    provider: "paystack",
+    reference: paystackResponse.data.reference,
+    accessCode: paystackResponse.data.access_code,
+    authorizationUrl: paystackResponse.data.authorization_url,
+    amount: Number(order.total) || 0,
+    currency,
+    status: "pending",
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await paymentDoc.set(payment);
 
   await orderResult.ref.update({
+    paymentId: paymentDoc.id,
     paymentProvider: "paystack",
     paymentMethod: "paystack",
     paymentStatus: "pending",
@@ -233,6 +254,8 @@ export const verifyPaystackPaymentRecord = async (
     };
   }
 
+  const paymentDoc = paymentsCollection.doc(reference);
+  const currentPayment = await paymentDoc.get();
   const orderSnapshot = await ordersCollection
     .where("paymentReference", "==", reference)
     .limit(1)
@@ -286,6 +309,30 @@ export const verifyPaystackPaymentRecord = async (
   }
 
   await orderDoc.ref.update(updateData);
+
+  await paymentDoc.set(
+    {
+      ...(currentPayment.exists ? {} : {
+        id: reference,
+        orderId: order.id || orderDoc.id,
+        uid: order.uid || uid,
+        email: order.email || "",
+        provider: "paystack",
+        reference,
+        amount: Number(order.total) || 0,
+        createdAt: now,
+      }),
+      status: isPaid ? "paid" : paystackResponse.data.status,
+      currency: paystackResponse.data.currency,
+      channel: paystackResponse.data.channel || "",
+      gatewayResponse: paystackResponse.data.gateway_response || "",
+      paystackTransactionId: paystackResponse.data.id,
+      paidAt: isPaid ? paystackResponse.data.paid_at || now : null,
+      verifiedAt: now,
+      updatedAt: now,
+    },
+    {merge: true}
+  );
 
   const updatedOrder = await orderDoc.ref.get();
 

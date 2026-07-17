@@ -1,14 +1,17 @@
-import {db} from "../config/firebase";
+﻿import {db} from "../config/firebase";
 
 const collections = {
   users: db.collection("users"),
   categories: db.collection("categories"),
   products: db.collection("products"),
   orders: db.collection("orders"),
+  payments: db.collection("payments"),
   contactMessages: db.collection("contactMessages"),
   blogPosts: db.collection("blogPosts"),
   carts: db.collection("carts"),
   wishlists: db.collection("wishlists"),
+  reviews: db.collection("reviews"),
+  notifications: db.collection("notifications"),
 };
 
 const countCollection = async (
@@ -55,6 +58,9 @@ export const getAdminDashboardRecord = async () => {
     totalProducts,
     totalCarts,
     totalWishlists,
+    totalPayments,
+    totalReviews,
+    totalNotifications,
     ordersSnapshot,
     contactSnapshot,
     blogSnapshot,
@@ -64,6 +70,9 @@ export const getAdminDashboardRecord = async () => {
     countCollection(collections.products),
     countCollection(collections.carts),
     countCollection(collections.wishlists),
+    countCollection(collections.payments),
+    countCollection(collections.reviews),
+    countCollection(collections.notifications),
     collections.orders.get(),
     collections.contactMessages.get(),
     collections.blogPosts.get(),
@@ -93,6 +102,9 @@ export const getAdminDashboardRecord = async () => {
       totalProducts,
       totalCarts,
       totalWishlists,
+      totalPayments,
+      totalReviews,
+      totalNotifications,
       totalContactMessages: contactMessages.length,
       newMessages,
       resolvedMessages,
