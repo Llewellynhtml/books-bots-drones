@@ -1,4 +1,4 @@
-import {Request, Response, NextFunction} from "express";
+﻿import {Request, Response, NextFunction} from "express";
 import {auth, db} from "../config/firebase";
 
 export interface AuthRequest extends Request {
@@ -9,13 +9,24 @@ export interface AuthRequest extends Request {
   };
 }
 
+const getBearerToken = (authorizationHeader?: string) => {
+  if (!authorizationHeader) {
+    return null;
+  }
+
+  return authorizationHeader
+    .replace(/^Bearer\s+/i, "")
+    .replace(/^"|"$/g, "")
+    .trim();
+};
+
 export const protect = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const token = req.headers.authorization?.split("Bearer ")[1];
+    const token = getBearerToken(req.headers.authorization);
 
     if (!token) {
       return res.status(401).json({
@@ -36,9 +47,14 @@ export const protect = async (
 
     return next();
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown auth error";
+
+    console.error("Auth token verification failed:", message);
+
     return res.status(401).json({
       success: false,
       message: "Invalid or expired token",
+      error: process.env.NODE_ENV === "production" ? undefined : message,
     });
   }
 };
