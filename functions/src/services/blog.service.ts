@@ -1,4 +1,4 @@
-import {db} from "../config/firebase";
+﻿import {db} from "../config/firebase";
 
 const blogPostsCollection = db.collection("blogPosts");
 
@@ -112,20 +112,15 @@ export const createBlogPostRecord = async (body: BlogPostInput) => {
 };
 
 export const getBlogPostRecords = async (query: BlogPostQuery) => {
-  let blogPostsQuery: FirebaseFirestore.Query = blogPostsCollection;
+  const snapshot = await blogPostsCollection.orderBy("createdAt", "desc").get();
+  let blogPosts = snapshot.docs.map((doc) => doc.data());
 
   if (query.isPublished === "true" || query.isPublished === "false") {
-    blogPostsQuery = blogPostsQuery.where(
-      "isPublished",
-      "==",
-      query.isPublished === "true"
-    );
+    const isPublished = query.isPublished === "true";
+    blogPosts = blogPosts.filter((post) => post.isPublished === isPublished);
   } else {
-    blogPostsQuery = blogPostsQuery.where("isPublished", "==", true);
+    blogPosts = blogPosts.filter((post) => post.isPublished === true);
   }
-
-  const snapshot = await blogPostsQuery.orderBy("createdAt", "desc").get();
-  let blogPosts = snapshot.docs.map((doc) => doc.data());
 
   if (query.tag) {
     const tag = query.tag.toLowerCase();
@@ -292,3 +287,4 @@ export const deleteBlogPostRecord = async (id: string) => {
     },
   };
 };
+
