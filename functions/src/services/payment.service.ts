@@ -1,5 +1,7 @@
 ﻿import {db} from "../config/firebase";
 
+import {finalizePaidOrderCartRecord} from "./cart.service";
+
 const ordersCollection = db.collection("orders");
 const paymentsCollection = db.collection("payments");
 const paystackBaseUrl = "https://api.paystack.co";
@@ -309,6 +311,15 @@ export const verifyPaystackPaymentRecord = async (
   }
 
   await orderDoc.ref.update(updateData);
+
+  if (isPaid) {
+    const purchasedItems = Array.isArray(order.items) ? order.items : [];
+    await finalizePaidOrderCartRecord(
+      String(order.uid || uid),
+      orderDoc.id,
+      purchasedItems
+    );
+  }
 
   await paymentDoc.set(
     {

@@ -26,8 +26,12 @@ module.exports = {
     "import",
   ],
   rules: {
-    "quotes": ["error", "double"],
+    quotes: ["error", "double"],
+    "linebreak-style": "off",
+    "max-len": ["error", {code: 100}],
+    "new-cap": ["error", {capIsNewExceptions: ["Router"]}],
+    "quote-props": ["error", "as-needed"],
     "import/no-unresolved": 0,
-    "indent": ["error", 2],
+    indent: ["error", 2],
   },
 };

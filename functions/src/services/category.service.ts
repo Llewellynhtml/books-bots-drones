@@ -2,6 +2,7 @@ import {db} from "../config/firebase";
 import {CategoryInput} from "../types/category.types";
 
 const categoriesCollection = db.collection("categories");
+const productsCollection = db.collection("products");
 
 const createSlug = (value: string) =>
   value
@@ -173,6 +174,21 @@ export const deleteCategoryRecord = async (id: string) => {
       body: {
         success: false,
         message: "Category not found",
+      },
+    };
+  }
+
+  const productsUsingCategory = await productsCollection
+    .where("categoryId", "==", id)
+    .limit(1)
+    .get();
+
+  if (!productsUsingCategory.empty) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        message: "Move or delete products in this category before deleting it",
       },
     };
   }

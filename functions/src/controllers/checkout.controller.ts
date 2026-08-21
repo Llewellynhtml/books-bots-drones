@@ -1,7 +1,11 @@
 ﻿import {Response} from "express";
 
 import {AuthRequest} from "../middleware/auth";
-import {createOrderRecord} from "../services/order.service";
+import {
+  completeCheckoutCartRecord,
+  createOrderRecord,
+  rollbackCheckoutOrderRecord,
+} from "../services/order.service";
 import {initializePaystackPaymentRecord} from "../services/payment.service";
 
 interface CheckoutBody {
@@ -26,7 +30,12 @@ export const checkout = async (req: AuthRequest, res: Response) => {
     }
 
     const body = req.body as CheckoutBody;
-    const orderResult = await createOrderRecord(uid, req.user?.email, body);
+    const orderResult = await createOrderRecord(
+      uid,
+      req.user?.email,
+      body,
+      {clearCart: false}
+    );
 
     if (orderResult.status !== 201) {
       return res.status(orderResult.status).json(orderResult.body);
@@ -42,6 +51,8 @@ export const checkout = async (req: AuthRequest, res: Response) => {
     }
 
     if (!isPaystackCheckout(body)) {
+      await completeCheckoutCartRecord(uid);
+
       return res.status(201).json({
         success: true,
         message: "Checkout completed successfully",
@@ -49,27 +60,36 @@ export const checkout = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const paymentResult = await initializePaystackPaymentRecord(
-      uid,
-      req.user?.role,
-      {
-        orderId: order.id,
-        callbackUrl: typeof body.callbackUrl === "string" ? body.callbackUrl : "",
-      }
-    );
+    let paymentResult;
+
+    try {
+      paymentResult = await initializePaystackPaymentRecord(
+        uid,
+        req.user?.role,
+        {
+          orderId: order.id,
+          callbackUrl:
+            typeof body.callbackUrl === "string" ? body.callbackUrl : "",
+        }
+      );
+    } catch (error) {
+      await rollbackCheckoutOrderRecord(order.id, uid);
+      throw error;
+    }
 
     if (paymentResult.status < 200 || paymentResult.status >= 300) {
-      return res.status(201).json({
-        success: true,
-        message: "Order created, but payment initialization failed",
-        order,
-        paymentError: paymentResult.body,
+      await rollbackCheckoutOrderRecord(order.id, uid);
+
+      return res.status(502).json({
+        success: false,
+        message: "Payment initialization failed. Your cart was preserved.",
+        error: paymentResult.body,
       });
     }
 
     return res.status(201).json({
       success: true,
-      message: "Checkout initialized successfully",
+      message: "Checkout initialized. Your cart will clear after payment succeeds.",
       order,
       payment: paymentResult.body.payment,
     });

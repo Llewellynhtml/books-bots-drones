@@ -31,3 +31,14 @@ export type OrderStatus =
   | "shipped"
   | "delivered"
   | "cancelled";
+
+export interface OrderStatusUpdateInput {
+  status?: OrderStatus;
+  note?: string;
+  notifyCustomer?: boolean;
+  courier?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
+  estimatedDeliveryAt?: string;
+  cancellationReason?: string;
+}

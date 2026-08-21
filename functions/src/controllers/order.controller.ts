@@ -91,9 +91,13 @@ export const getOrderById = async (req: AuthRequest, res: Response) => {
 
 export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
   try {
+    const actorUid = req.user?.uid;
+    if (!actorUid) return res.status(401).json({success: false, message: "Unauthorized"});
     const result = await updateOrderStatusRecord(
       getParam(req.params.id),
-      req.body.status
+      req.body,
+      actorUid,
+      req.user?.email
     );
 
     return res.status(result.status).json(result.body);

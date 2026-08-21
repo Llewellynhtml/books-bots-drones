@@ -30,6 +30,10 @@ export interface ProductInput {
   subcategory?: string;
   brand?: string;
   stock?: number;
+  costPrice?: number;
+  minStock?: number;
+  sku?: string;
+  barcode?: string;
   images?: string[];
   targetCustomers?: string[];
   launchPhase?: number;

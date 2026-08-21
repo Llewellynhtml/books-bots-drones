@@ -4,9 +4,11 @@ import {
   CreateOrderInput,
   OrderItem,
   OrderStatus,
+  OrderStatusUpdateInput,
   ShippingAddress,
 } from "../types/order.types";
 import {clearCartRecord, getCartRecord} from "./cart.service";
+import {createNotificationRecord} from "./notification.service";
 
 const ordersCollection = db.collection("orders");
 
@@ -18,6 +20,15 @@ const allowedStatuses = new Set<OrderStatus>([
   "delivered",
   "cancelled",
 ]);
+
+const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
+  pending: ["processing", "cancelled"],
+  paid: ["processing", "cancelled"],
+  processing: ["shipped", "cancelled"],
+  shipped: ["delivered", "cancelled"],
+  delivered: [],
+  cancelled: [],
+};
 
 const cleanText = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
@@ -65,7 +76,8 @@ const toOrderItem = (item: CartItemWithProduct): OrderItem => {
 export const createOrderRecord = async (
   uid: string,
   email: string | undefined,
-  body: CreateOrderInput
+  body: CreateOrderInput,
+  options: {clearCart?: boolean} = {}
 ) => {
   const shippingAddress = cleanShippingAddress(body);
 
@@ -118,7 +130,10 @@ export const createOrderRecord = async (
   };
 
   await docRef.set(order);
-  await clearCartRecord(uid);
+
+  if (options.clearCart !== false) {
+    await clearCartRecord(uid);
+  }
 
   return {
     status: 201,
@@ -128,6 +143,28 @@ export const createOrderRecord = async (
       order,
     },
   };
+};
+
+export const completeCheckoutCartRecord = async (uid: string) => {
+  await clearCartRecord(uid);
+};
+
+export const rollbackCheckoutOrderRecord = async (
+  orderId: string,
+  uid: string
+) => {
+  const orderRef = ordersCollection.doc(orderId);
+  const snapshot = await orderRef.get();
+
+  if (!snapshot.exists) {
+    return;
+  }
+
+  const order = snapshot.data();
+
+  if (order?.uid === uid && order?.paymentStatus !== "paid") {
+    await orderRef.delete();
+  }
 };
 
 export const getOrderRecords = async (uid: string, role?: string) => {
@@ -187,9 +224,11 @@ export const getOrderRecordById = async (
 
 export const updateOrderStatusRecord = async (
   id: string,
-  statusInput: unknown
+  input: OrderStatusUpdateInput,
+  actorUid: string,
+  actorEmail?: string
 ) => {
-  const status = cleanText(statusInput) as OrderStatus;
+  const status = cleanText(input.status) as OrderStatus;
 
   if (!allowedStatuses.has(status)) {
     return {
@@ -214,10 +253,84 @@ export const updateOrderStatusRecord = async (
     };
   }
 
+  const order = currentOrder.data() || {};
+  const previousStatus = cleanText(order.status) as OrderStatus;
+  if (!allowedTransitions[previousStatus]?.includes(status)) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: `Order cannot move from ${previousStatus} to ${status}`,
+      },
+    };
+  }
+  const courier = cleanText(input.courier);
+  const trackingNumber = cleanText(input.trackingNumber);
+  const cancellationReason = cleanText(input.cancellationReason);
+  if (status === "processing" && order.paymentStatus !== "paid") {
+    return {
+      status: 400,
+      body: {success: false, message: "Only paid orders can be processed"},
+    };
+  }
+  if (status === "shipped" && (!courier || !trackingNumber)) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "Courier and tracking number are required",
+      },
+    };
+  }
+  if (status === "cancelled" && !cancellationReason) {
+    return {
+      status: 400,
+      body: {success: false, message: "Cancellation reason is required"},
+    };
+  }
+  const now = new Date().toISOString();
+  const historyEntry = {
+    from: previousStatus,
+    to: status,
+    note: cleanText(input.note),
+    actorUid,
+    actorEmail: actorEmail || "",
+    createdAt: now,
+  };
+
   await orderDoc.update({
     status,
-    updatedAt: new Date().toISOString(),
+    ...(status === "shipped" ? {
+      courier,
+      trackingNumber,
+      trackingUrl: cleanText(input.trackingUrl),
+      estimatedDeliveryAt: cleanText(input.estimatedDeliveryAt),
+      shippedAt: now,
+    } : {}),
+    ...(status === "delivered" ? {deliveredAt: now} : {}),
+    ...(status === "cancelled" ? {
+      cancellationReason,
+      cancelledAt: now,
+      refundRequired: order.paymentStatus === "paid",
+    } : {}),
+    statusHistory: [
+      ...(Array.isArray(order.statusHistory) ? order.statusHistory : []),
+      historyEntry,
+    ],
+    updatedAt: now,
   });
+
+  if (input.notifyCustomer !== false && order.uid) {
+    const trackingMessage = trackingNumber ?
+      ` Tracking: ${trackingNumber}` : "";
+    await createNotificationRecord({
+      uid: String(order.uid),
+      title: `Order ${status}`,
+      message: `Your order ${id.slice(0, 8)} is now ${status}.` +
+        trackingMessage,
+      type: "order",
+    });
+  }
 
   const updatedOrder = await orderDoc.get();
 

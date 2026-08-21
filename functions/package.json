@@ -3,6 +3,7 @@
   "scripts": {
     "lint": "eslint --ext .js,.ts .",
     "build": "tsc",
+    "test": "npm run build && node --test lib/app.contract.test.js",
     "build:watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions,firestore",
     "shell": "npm run build && firebase functions:shell",
@@ -15,7 +16,6 @@
   },
   "main": "lib/index.js",
   "dependencies": {
-    "@supabase/supabase-js": "^2.110.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^5.1.0",

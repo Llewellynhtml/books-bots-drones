@@ -348,3 +348,57 @@ export const clearCartRecord = async (uid: string) => {
     },
   };
 };
+
+interface PurchasedCartItem {
+  productId: string;
+  quantity: number;
+}
+
+/**
+ * Removes only the quantities captured by an order and records completion on
+ * the order. This makes payment verification safe to retry while preserving
+ * products the customer added after leaving for the payment provider.
+ * @param {string} uid Firebase user ID that owns the cart.
+ * @param {string} orderId Order being finalized.
+ * @param {PurchasedCartItem[]} purchasedItems Quantities captured by the order.
+ * @return {Promise<void>} Resolves after the transactional update.
+ */
+export const finalizePaidOrderCartRecord = async (
+  uid: string,
+  orderId: string,
+  purchasedItems: PurchasedCartItem[]
+) => {
+  const orderRef = db.collection("orders").doc(orderId);
+  const cartRef = getCartDoc(uid);
+
+  await db.runTransaction(async (transaction) => {
+    const [orderSnapshot, cartSnapshot] = await Promise.all([
+      transaction.get(orderRef),
+      transaction.get(cartRef),
+    ]);
+
+    if (!orderSnapshot.exists || orderSnapshot.data()?.cartFinalizedAt) {
+      return;
+    }
+
+    const cartData = cartSnapshot.data();
+    const currentItems = Array.isArray(cartData?.items) ?
+      cartData.items as CartItem[] :
+      [];
+    const purchasedByProduct = new Map(
+      purchasedItems.map((item) => [item.productId, item.quantity])
+    );
+    const now = new Date().toISOString();
+    const nextItems = currentItems.flatMap((item) => {
+      const remainingQuantity =
+        item.quantity - (purchasedByProduct.get(item.productId) || 0);
+
+      return remainingQuantity > 0 ?
+        [{...item, quantity: remainingQuantity, updatedAt: now}] :
+        [];
+    });
+
+    transaction.set(cartRef, {uid, items: nextItems, updatedAt: now}, {merge: true});
+    transaction.update(orderRef, {cartFinalizedAt: now, updatedAt: now});
+  });
+};

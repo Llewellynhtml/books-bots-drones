@@ -13,5 +13,6 @@ _zip-source-inspect*
 # Keep environment variables out of version control
 .env
 functions/.env
+functions/.env.legacy-backup
 
 /src/generated/prisma

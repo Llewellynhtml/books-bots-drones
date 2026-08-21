@@ -2,6 +2,83 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isActive() { return isSignedIn() && profile().active == true; }
+    function hasRole(roles) { return isActive() && profile().role in roles; }
+    function isAdmin() { return hasRole(['admin']); }
+    function isStaff() { return hasRole(['admin', 'manager']); }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+    match /products/{document=**} {
+      allow read: if isActive();
+      allow write: if isStaff();
+    }
+    match /categories/{document=**} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    match /orders/{document=**} {
+      allow read: if isActive();
+      allow write: if hasRole(['admin', 'manager', 'seller']);
+    }
+    match /customers/{document=**} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    match /customerNotes/{document=**} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    match /customerActivities/{document=**} {
+      allow read, create: if isActive();
+      allow update, delete: if isAdmin();
+    }
+    match /customerCommunications/{document=**} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    match /customerAttachments/{document=**} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    match /stockMovements/{document=**} {
+      allow read: if isActive();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+    match /suppliers/{document=**} {
+      allow read: if isActive();
+      allow write: if isStaff();
+    }
+    match /purchaseOrders/{document=**} {
+      allow read: if isActive();
+      allow write: if isStaff();
+    }
+    match /expenses/{document=**} {
+      allow read, write: if isAdmin();
+    }
+    match /company/{document=**} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    match /settings/{document=**} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    match /notifications/{document=**} {
+      allow read, create, update: if isActive();
+      allow delete: if isStaff();
+    }
+    match /auditLogs/{document=**} {
+      allow read: if isAdmin();
+      allow create: if isActive();
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
     match /{document=**} {
       allow read, write: if false;
     }

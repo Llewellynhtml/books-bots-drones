@@ -59,6 +59,10 @@ const cleanProductInput = (body: ProductInput) => {
     subcategory: body.subcategory?.trim() || "",
     brand: body.brand?.trim() || "",
     stock: Number.isFinite(Number(body.stock)) ? Number(body.stock) : 0,
+    costPrice: Number.isFinite(Number(body.costPrice)) ? Number(body.costPrice) : 0,
+    minStock: Number.isFinite(Number(body.minStock)) ? Number(body.minStock) : 0,
+    sku: body.sku?.trim() || "",
+    barcode: body.barcode?.trim() || "",
     images: toStringArray(body.images),
     targetCustomers: toStringArray(body.targetCustomers),
     launchPhase: Number.isFinite(Number(body.launchPhase)) ?
@@ -304,6 +308,29 @@ export const updateProductRecord = async (
     }
 
     updateData.stock = stock;
+  }
+
+  for (const field of ["costPrice", "minStock"] as const) {
+    if (body[field] !== undefined) {
+      const value = Number(body[field]);
+
+      if (!Number.isFinite(value) || value < 0) {
+        return {
+          status: 400,
+          body: {success: false, message: `${field} cannot be negative`},
+        };
+      }
+
+      updateData[field] = value;
+    }
+  }
+
+  if (typeof body.sku === "string") {
+    updateData.sku = body.sku.trim();
+  }
+
+  if (typeof body.barcode === "string") {
+    updateData.barcode = body.barcode.trim();
   }
 
   if (body.images !== undefined) {
