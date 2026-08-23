@@ -6,6 +6,7 @@ export interface AuthRequest extends Request {
     uid: string;
     email?: string;
     role?: string;
+    emailVerified?: boolean;
   };
 }
 
@@ -43,6 +44,7 @@ export const protect = async (
       uid: decodedToken.uid,
       email: decodedToken.email,
       role: userData?.role || "customer",
+      emailVerified: decodedToken.email_verified === true,
     };
 
     return next();
@@ -57,6 +59,21 @@ export const protect = async (
       error: process.env.NODE_ENV === "production" ? undefined : message,
     });
   }
+};
+
+export const requireVerifiedEmail = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.user?.emailVerified) {
+    return res.status(403).json({
+      success: false,
+      message: "Verify your email address before completing this action",
+      code: "EMAIL_NOT_VERIFIED",
+    });
+  }
+  return next();
 };
 
 export const requireAdmin = (

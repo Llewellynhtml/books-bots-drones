@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import {Response} from "express";
 
 import {AuthRequest} from "../middleware/auth";
@@ -6,6 +7,11 @@ import {
   getOrderRecordById,
   getOrderRecords,
   updateOrderStatusRecord,
+  cancelCustomerOrderRecord,
+  createReturnRequestRecord,
+  getReturnRequestsRecord,
+  getInvoiceRecord,
+  updateReturnRequestRecord,
 } from "../services/order.service";
 
 const getUid = (req: AuthRequest) => req.user?.uid;
@@ -34,6 +40,30 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       message,
     });
   }
+};
+
+export const cancelOrder = async (req: AuthRequest, res: Response) => {
+  const uid = getUid(req); if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+  const result = await cancelCustomerOrderRecord(getParam(req.params.id), uid, req.body.reason);
+  return res.status(result.status).json(result.body);
+};
+export const createReturnRequest = async (req: AuthRequest, res: Response) => {
+  const uid = getUid(req); if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+  const result = await createReturnRequestRecord(getParam(req.params.id), uid, req.body);
+  return res.status(result.status).json(result.body);
+};
+export const getReturnRequests = async (req: AuthRequest, res: Response) => {
+  const uid = getUid(req); if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+  return res.json(await getReturnRequestsRecord(uid, req.user?.role));
+};
+export const getInvoice = async (req: AuthRequest, res: Response) => {
+  const uid = getUid(req); if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+  const result = await getInvoiceRecord(getParam(req.params.id), uid, req.user?.role);
+  return res.status(result.status).json(result.body);
+};
+export const updateReturnRequest = async (req: AuthRequest, res: Response) => {
+  const result = await updateReturnRequestRecord(getParam(req.params.returnId), req.body);
+  return res.status(result.status).json(result.body);
 };
 
 export const getOrders = async (req: AuthRequest, res: Response) => {

@@ -119,6 +119,10 @@ describe("protected API contract", () => {
     {name: "notifications", path: "/notifications", method: "GET"},
     {name: "payment verification", path: "/payments/verify/reference", method: "GET"},
     {name: "review creation", path: "/reviews", method: "POST"},
+    {name: "saved addresses", path: "/auth/addresses", method: "GET"},
+    {name: "promotion validation", path: "/promotions/validate", method: "POST"},
+    {name: "return requests", path: "/orders/returns", method: "GET"},
+    {name: "wishlist clearing", path: "/wishlist/clear", method: "DELETE"},
   ];
 
   for (const request of protectedRequests) {

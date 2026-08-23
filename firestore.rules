@@ -13,6 +13,23 @@ service cloud.firestore {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow create, update, delete: if isAdmin();
     }
+    match /users/{userId}/addresses/{addressId} {
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+    match /carts/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+    match /wishlists/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+    match /promotions/{document=**} {
+      allow read, write: if isAdmin();
+    }
+    match /returns/{returnId} {
+      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
     match /products/{document=**} {
       allow read: if isActive();
       allow write: if isStaff();

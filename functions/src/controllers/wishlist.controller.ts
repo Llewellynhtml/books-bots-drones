@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import {Response} from "express";
 
 import {AuthRequest} from "../middleware/auth";
@@ -5,6 +6,7 @@ import {
   addWishlistItemRecord,
   getWishlistRecord,
   removeWishlistItemRecord,
+  clearWishlistRecord,
 } from "../services/wishlist.service";
 
 export const getWishlist = async (req: AuthRequest, res: Response) => {
@@ -28,6 +30,16 @@ export const getWishlist = async (req: AuthRequest, res: Response) => {
       success: false,
       message,
     });
+  }
+};
+
+export const clearWishlist = async (req: AuthRequest, res: Response) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+    return res.status(200).json(await clearWishlistRecord(uid));
+  } catch (error) {
+    return res.status(500).json({success: false, message: error instanceof Error ? error.message : "Failed to clear wishlist"});
   }
 };
 

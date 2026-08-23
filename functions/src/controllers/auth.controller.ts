@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import {Request, Response} from "express";
 
 import {auth, db} from "../config/firebase";
@@ -68,6 +69,7 @@ export const registerUser = async (req: Request, res: Response) => {
       name,
       email,
       role: "customer",
+      emailVerified: false,
       createdAt: new Date().toISOString(),
     };
 
@@ -154,7 +156,10 @@ export const loginUser = async (req: Request, res: Response) => {
       });
     }
 
-    const userDoc = await db.collection("users").doc(data.localId).get();
+    const [userDoc, authUser] = await Promise.all([
+      db.collection("users").doc(data.localId).get(),
+      auth.getUser(data.localId),
+    ]);
     const userData = userDoc.data();
 
     return res.status(200).json({
@@ -163,11 +168,11 @@ export const loginUser = async (req: Request, res: Response) => {
       token: data.idToken,
       refreshToken: data.refreshToken,
       expiresIn: data.expiresIn,
-      user: userData || {
+      user: {...(userData || {
         uid: data.localId,
         email: data.email,
         role: "customer",
-      },
+      }), emailVerified: authUser.emailVerified},
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Login failed";
@@ -326,7 +331,10 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const userDoc = await db.collection("users").doc(uid).get();
+    const [userDoc, authUser] = await Promise.all([
+      db.collection("users").doc(uid).get(),
+      auth.getUser(uid),
+    ]);
 
     if (!userDoc.exists) {
       return res.status(404).json({
@@ -337,7 +345,7 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      user: userDoc.data(),
+      user: {...userDoc.data(), emailVerified: authUser.emailVerified},
     });
   } catch (error) {
     const message =
@@ -348,4 +356,92 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
       message,
     });
   }
+};
+
+export const sendVerificationEmail = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.uid) return res.status(401).json({success: false, message: "Unauthorized"});
+    if (req.user.emailVerified) return res.status(200).json({success: true, message: "Email is already verified"});
+    const apiKey = process.env.WEB_API_KEY;
+    const idToken = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
+    if (!apiKey || !idToken) return res.status(500).json({success: false, message: "Email verification is not configured"});
+    const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({requestType: "VERIFY_EMAIL", idToken}),
+    });
+    const data = await response.json();
+    if (!response.ok) return res.status(400).json({success: false, message: data.error?.message || "Failed to send verification email"});
+    return res.json({success: true, message: "Verification email sent"});
+  } catch (error) {
+    return res.status(500).json({success: false, message: error instanceof Error ? error.message : "Failed to send verification email"});
+  }
+};
+
+export const updateProfile = async (req: AuthRequest, res: Response) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+    const name = cleanText(req.body.name);
+    const phone = cleanText(req.body.phone);
+    if (!name) return res.status(400).json({success: false, message: "Name is required"});
+    if (phone && !/^\+?[0-9 ()-]{9,20}$/.test(phone)) {
+      return res.status(400).json({success: false, message: "Enter a valid phone number"});
+    }
+    await Promise.all([
+      auth.updateUser(uid, {displayName: name}),
+      db.collection("users").doc(uid).set({name, phone, updatedAt: new Date().toISOString()}, {merge: true}),
+    ]);
+    const profile = await db.collection("users").doc(uid).get();
+    return res.status(200).json({success: true, message: "Profile updated", user: profile.data()});
+  } catch (error) {
+    return res.status(500).json({success: false, message: error instanceof Error ? error.message : "Failed to update profile"});
+  }
+};
+
+const addressPayload = (body: Record<string, unknown>) => ({
+  label: cleanText(body.label) || "Delivery address",
+  fullName: cleanText(body.fullName), phone: cleanText(body.phone),
+  addressLine1: cleanText(body.addressLine1), addressLine2: cleanText(body.addressLine2),
+  city: cleanText(body.city), province: cleanText(body.province),
+  postalCode: cleanText(body.postalCode), country: cleanText(body.country) || "South Africa",
+});
+
+export const getAddresses = async (req: AuthRequest, res: Response) => {
+  const uid = req.user?.uid;
+  if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+  const snapshot = await db.collection("users").doc(uid).collection("addresses").orderBy("updatedAt", "desc").get();
+  return res.json({success: true, addresses: snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()}))});
+};
+
+export const createAddress = async (req: AuthRequest, res: Response) => {
+  const uid = req.user?.uid;
+  if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+  const address = addressPayload(req.body);
+  if (!address.fullName || !address.phone || !address.addressLine1 || !address.city || !address.province || !/^\d{4}$/.test(address.postalCode)) {
+    return res.status(400).json({success: false, message: "Complete delivery address is required"});
+  }
+  const now = new Date().toISOString();
+  const ref = db.collection("users").doc(uid).collection("addresses").doc();
+  await ref.set({...address, createdAt: now, updatedAt: now});
+  return res.status(201).json({success: true, address: {id: ref.id, ...address, createdAt: now, updatedAt: now}});
+};
+
+export const updateAddress = async (req: AuthRequest, res: Response) => {
+  const uid = req.user?.uid;
+  if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+  const address = addressPayload(req.body);
+  if (!address.fullName || !address.phone || !address.addressLine1 || !address.city || !address.province || !/^\d{4}$/.test(address.postalCode)) {
+    return res.status(400).json({success: false, message: "Complete delivery address is required"});
+  }
+  const ref = db.collection("users").doc(uid).collection("addresses").doc(req.params.id as string);
+  if (!(await ref.get()).exists) return res.status(404).json({success: false, message: "Address not found"});
+  await ref.update({...address, updatedAt: new Date().toISOString()});
+  return res.json({success: true, message: "Address updated"});
+};
+
+export const deleteAddress = async (req: AuthRequest, res: Response) => {
+  const uid = req.user?.uid;
+  if (!uid) return res.status(401).json({success: false, message: "Unauthorized"});
+  await db.collection("users").doc(uid).collection("addresses").doc(req.params.id as string).delete();
+  return res.json({success: true, message: "Address deleted"});
 };

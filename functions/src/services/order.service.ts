@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import {db} from "../config/firebase";
 import {CartItemWithProduct} from "../types/cart.types";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../types/order.types";
 import {clearCartRecord, getCartRecord} from "./cart.service";
 import {createNotificationRecord} from "./notification.service";
+import {validatePromotionRecord} from "./promotion.service";
 
 const ordersCollection = db.collection("orders");
 
@@ -108,7 +110,17 @@ export const createOrderRecord = async (
   const subtotal = cart.subtotal;
   const shippingFee = subtotal > 0 ? 0 : 0;
   const tax = 0;
-  const total = subtotal + shippingFee + tax;
+  let discountAmount = 0;
+  let promotionCode = "";
+  if (cleanText(body.promotionCode)) {
+    const promotion = await validatePromotionRecord(body.promotionCode, subtotal);
+    if (promotion.status !== 200 || !promotion.body.promotion) {
+      return {status: promotion.status, body: {success: false, message: promotion.body.message}};
+    }
+    discountAmount = Number(promotion.body.discountAmount) || 0;
+    promotionCode = promotion.body.promotion.code;
+  }
+  const total = subtotal - discountAmount + shippingFee + tax;
   const order = {
     id: docRef.id,
     uid,
@@ -121,8 +133,10 @@ export const createOrderRecord = async (
     tax,
     total,
     status: "pending" as OrderStatus,
-    paymentStatus: "unpaid",
-    paymentMethod: cleanText(body.paymentMethod) || "manual",
+    paymentStatus: cleanText(body.paymentMethod) === "paystack" ? "unpaid" : "due_on_delivery",
+    paymentMethod: cleanText(body.paymentMethod) === "paystack" ? "paystack" : "pay_on_delivery",
+    promotionCode,
+    discountAmount,
     shippingAddress,
     notes: cleanText(body.notes),
     createdAt: now,
@@ -267,7 +281,7 @@ export const updateOrderStatusRecord = async (
   const courier = cleanText(input.courier);
   const trackingNumber = cleanText(input.trackingNumber);
   const cancellationReason = cleanText(input.cancellationReason);
-  if (status === "processing" && order.paymentStatus !== "paid") {
+  if (status === "processing" && order.paymentStatus !== "paid" && order.paymentMethod !== "pay_on_delivery") {
     return {
       status: 400,
       body: {success: false, message: "Only paid orders can be processed"},
@@ -307,7 +321,7 @@ export const updateOrderStatusRecord = async (
       estimatedDeliveryAt: cleanText(input.estimatedDeliveryAt),
       shippedAt: now,
     } : {}),
-    ...(status === "delivered" ? {deliveredAt: now} : {}),
+    ...(status === "delivered" ? {deliveredAt: now, ...(order.paymentMethod === "pay_on_delivery" ? {paymentStatus: "paid", paidAt: now} : {})} : {}),
     ...(status === "cancelled" ? {
       cancellationReason,
       cancelledAt: now,
@@ -342,4 +356,63 @@ export const updateOrderStatusRecord = async (
       order: updatedOrder.data(),
     },
   };
+};
+
+export const cancelCustomerOrderRecord = async (id: string, uid: string, reasonInput: unknown) => {
+  const ref = ordersCollection.doc(id);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return {status: 404, body: {success: false, message: "Order not found"}};
+  const order = snapshot.data() || {};
+  if (order.uid !== uid) return {status: 403, body: {success: false, message: "You cannot cancel this order"}};
+  if (["delivered", "cancelled"].includes(order.status)) return {status: 400, body: {success: false, message: "This order can no longer be cancelled"}};
+  const reason = cleanText(reasonInput);
+  if (!reason) return {status: 400, body: {success: false, message: "Cancellation reason is required"}};
+  const now = new Date().toISOString();
+  await ref.update({status: "cancelled", cancellationReason: reason, cancelledAt: now, refundRequired: order.paymentStatus === "paid", updatedAt: now,
+    statusHistory: [...(Array.isArray(order.statusHistory) ? order.statusHistory : []), {from: order.status, to: "cancelled", note: reason, actorUid: uid, createdAt: now}]});
+  return {status: 200, body: {success: true, message: "Order cancelled", refundRequired: order.paymentStatus === "paid"}};
+};
+
+export const createReturnRequestRecord = async (id: string, uid: string, input: Record<string, unknown>) => {
+  const orderSnapshot = await ordersCollection.doc(id).get();
+  if (!orderSnapshot.exists) return {status: 404, body: {success: false, message: "Order not found"}};
+  const order = orderSnapshot.data() || {};
+  if (order.uid !== uid) return {status: 403, body: {success: false, message: "You cannot return this order"}};
+  if (order.status !== "delivered" || !order.deliveredAt) return {status: 400, body: {success: false, message: "Only delivered orders can be returned"}};
+  const returnDeadline = new Date(order.deliveredAt).getTime() + 30 * 24 * 60 * 60 * 1000;
+  if (Date.now() > returnDeadline) return {status: 400, body: {success: false, message: "The 30-day return period has ended"}};
+  const reason = cleanText(input.reason);
+  if (!reason) return {status: 400, body: {success: false, message: "Return reason is required"}};
+  const existing = await db.collection("returns").where("orderId", "==", id).where("uid", "==", uid).limit(1).get();
+  if (!existing.empty) return {status: 409, body: {success: false, message: "A return request already exists for this order"}};
+  const now = new Date().toISOString();
+  const ref = db.collection("returns").doc();
+  const record = {id: ref.id, orderId: id, uid, reason, details: cleanText(input.details), status: "requested", refundStatus: "not_started", requestedAt: now, updatedAt: now};
+  await ref.set(record);
+  return {status: 201, body: {success: true, message: "Return request submitted", returnRequest: record}};
+};
+
+export const getReturnRequestsRecord = async (uid: string, role?: string) => {
+  let query: FirebaseFirestore.Query = db.collection("returns");
+  if (role !== "admin") query = query.where("uid", "==", uid);
+  const snapshot = await query.get();
+  return {success: true, count: snapshot.size, returns: snapshot.docs.map((doc) => doc.data()).sort((a, b) => String(b.requestedAt).localeCompare(String(a.requestedAt)))};
+};
+
+export const getInvoiceRecord = async (id: string, uid: string, role?: string) => {
+  const result = await getOrderRecordById(id, uid, role);
+  if (result.status !== 200 || !("order" in result.body)) return result;
+  return {status: 200, body: {success: true, invoice: {invoiceNumber: `INV-${id.slice(0, 10).toUpperCase()}`, issuedAt: new Date().toISOString(), seller: {name: "Books Bots Drones", country: "South Africa"}, order: result.body.order}}};
+};
+
+export const updateReturnRequestRecord = async (id: string, input: Record<string, unknown>) => {
+  const allowed = new Set(["approved", "rejected", "received", "refunded"]);
+  const status = cleanText(input.status);
+  if (!allowed.has(status)) return {status: 400, body: {success: false, message: "Invalid return status"}};
+  const ref = db.collection("returns").doc(id);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return {status: 404, body: {success: false, message: "Return request not found"}};
+  const now = new Date().toISOString();
+  await ref.update({status, adminNote: cleanText(input.note), refundStatus: status === "refunded" ? "completed" : snapshot.data()?.refundStatus || "not_started", updatedAt: now});
+  return {status: 200, body: {success: true, message: "Return request updated", returnRequest: (await ref.get()).data()}};
 };

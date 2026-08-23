@@ -14,6 +14,7 @@ import productRoutes from "./routes/product.routes";
 import reviewRoutes from "./routes/review.routes";
 import storageRoutes from "./routes/storage.routes";
 import wishlistRoutes from "./routes/wishlist.routes";
+import promotionRoutes from "./routes/promotion.routes";
 
 const app = express();
 const configuredOrigins = (process.env.CORS_ORIGINS || "")
@@ -63,6 +64,7 @@ app.use("/notifications", notificationRoutes);
 app.use("/orders", orderRoutes);
 app.use("/payments", paymentRoutes);
 app.use("/products", productRoutes);
+app.use("/promotions", promotionRoutes);
 app.use("/reviews", reviewRoutes);
 app.use("/storage", storageRoutes);
 app.use("/wishlist", wishlistRoutes);

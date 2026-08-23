@@ -13,6 +13,7 @@ export interface CreateOrderInput {
   shippingAddress?: Partial<ShippingAddress>;
   paymentMethod?: string;
   notes?: string;
+  promotionCode?: string;
 }
 
 export interface OrderItem {

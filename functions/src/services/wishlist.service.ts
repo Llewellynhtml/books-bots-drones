@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import {db} from "../config/firebase";
 import {getProductRecordById} from "./product.service";
 
@@ -173,4 +174,9 @@ export const removeWishlistItemRecord = async (
       wishlist: await buildWishlistResponse(uid),
     },
   };
+};
+
+export const clearWishlistRecord = async (uid: string) => {
+  await getWishlistDoc(uid).set({uid, items: [], updatedAt: new Date().toISOString()}, {merge: true});
+  return {success: true, message: "Wishlist cleared successfully", count: 0, wishlist: []};
 };
